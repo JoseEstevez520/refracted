@@ -5,7 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDocument, filterTreeByRole, findSection, estimateTokens, renderTree } from '../src/parser.js';
+import { parseDocument, filterTreeByRole, findSection, estimateTokens, renderTree, extractEntities, extractDates } from '../src/parser.js';
 
 // ── Test document ─────────────────────────────────────────────────────
 
@@ -342,6 +342,161 @@ hechos:
     assert.equal(parsed.meta.facts.length, 1);
     assert.equal(parsed.meta.facts[0].id, 'dato-1');
     assert.equal(parsed.meta.facts[0].value, 42);
+  });
+});
+
+// ── extractEntities ───────────────────────────────────────────────────
+
+const ENTITIES_DOC = `---
+type: protocol
+roles:
+  training: [core, training]
+  auditor: [core, audit]
+---
+
+<!-- @role: core -->
+# Opening Protocol
+
+See [[Maintenance]] for details.
+<!-- @/role -->
+
+<!-- @role: training -->
+## Temperature Checks
+
+Check [[Cold Room 1]] and [[Cold Room 2]] every morning.
+Also see [[Summer Protocol]] for exceptions.
+
+## Exceptions
+
+In [[Summer Protocol]], rules are different.
+<!-- @/role -->
+
+<!-- @role: audit -->
+## Incident History
+
+Referenced in [[incident_2025_11]] report.
+<!-- @/role -->
+`;
+
+describe('extractEntities', () => {
+  it('should extract all wikilinks without role filter', () => {
+    const parsed = parseDocument(ENTITIES_DOC);
+    const entities = extractEntities(parsed);
+    const names = entities.map(e => e.name);
+    assert.ok(names.includes('Maintenance'));
+    assert.ok(names.includes('Cold Room 1'));
+    assert.ok(names.includes('Cold Room 2'));
+    assert.ok(names.includes('Summer Protocol'));
+    assert.ok(names.includes('incident_2025_11'));
+  });
+
+  it('should deduplicate entities', () => {
+    const parsed = parseDocument(ENTITIES_DOC);
+    const entities = extractEntities(parsed);
+    const names = entities.map(e => e.name.toLowerCase());
+    // "Summer Protocol" appears in two sections but should only appear once
+    const count = names.filter(n => n === 'summer protocol').length;
+    assert.equal(count, 1);
+  });
+
+  it('should include section name for each entity', () => {
+    const parsed = parseDocument(ENTITIES_DOC);
+    const entities = extractEntities(parsed);
+    const maintenance = entities.find(e => e.name === 'Maintenance');
+    assert.ok(maintenance);
+    assert.equal(maintenance.section, 'Opening Protocol');
+  });
+
+  it('should respect role filter', () => {
+    const parsed = parseDocument(ENTITIES_DOC);
+    const entities = extractEntities(parsed, 'auditor');
+    const names = entities.map(e => e.name);
+    // Auditor sees core + audit — should see Maintenance and incident_2025_11
+    assert.ok(names.includes('Maintenance'));
+    assert.ok(names.includes('incident_2025_11'));
+    // Should NOT see training-only entities
+    assert.ok(!names.includes('Cold Room 1'));
+    assert.ok(!names.includes('Cold Room 2'));
+  });
+
+  it('should return empty for unknown role', () => {
+    const parsed = parseDocument(ENTITIES_DOC);
+    const entities = extractEntities(parsed, 'unknown_role');
+    assert.equal(entities.length, 0);
+  });
+
+  it('should skip wikilinks in code blocks', () => {
+    const doc = `# Heading\n\n\`\`\`\n[[NotAnEntity]]\n\`\`\`\n\n[[RealEntity]]\n`;
+    const parsed = parseDocument(doc);
+    const entities = extractEntities(parsed);
+    const names = entities.map(e => e.name);
+    assert.ok(names.includes('RealEntity'));
+    assert.ok(!names.includes('NotAnEntity'));
+  });
+
+  it('should handle document with no wikilinks', () => {
+    const parsed = parseDocument(MINIMAL_DOC);
+    const entities = extractEntities(parsed);
+    assert.equal(entities.length, 0);
+  });
+});
+
+// ── extractDates ──────────────────────────────────────────────────────
+
+const DATES_DOC = `---
+type: log
+---
+
+# Events
+
+On 2025-09-01 we started the protocol.
+In 2026-03 the compressor failed.
+The incident on 2026-03-15 was resolved.
+No date here.
+Another 2025-12-31 entry.
+`;
+
+describe('extractDates', () => {
+  it('should extract full YYYY-MM-DD dates', () => {
+    const parsed = parseDocument(DATES_DOC);
+    const dates = extractDates(parsed);
+    const dateValues = dates.map(d => d.date);
+    assert.ok(dateValues.includes('2025-09-01'));
+    assert.ok(dateValues.includes('2026-03-15'));
+    assert.ok(dateValues.includes('2025-12-31'));
+  });
+
+  it('should extract YYYY-MM dates', () => {
+    const parsed = parseDocument(DATES_DOC);
+    const dates = extractDates(parsed);
+    const dateValues = dates.map(d => d.date);
+    assert.ok(dateValues.includes('2026-03'));
+  });
+
+  it('should not double-count YYYY-MM when YYYY-MM-DD is present on the same line', () => {
+    const parsed = parseDocument(DATES_DOC);
+    const dates = extractDates(parsed);
+    // "2026-03-15" line should produce one entry for the full date, not also "2026-03"
+    const march15 = dates.filter(d => d.date === '2026-03-15');
+    assert.equal(march15.length, 1);
+    // 2026-03 comes from its own line ("In 2026-03 the compressor failed")
+    // so it should still be present once
+    const march = dates.filter(d => d.date === '2026-03');
+    assert.equal(march.length, 1);
+  });
+
+  it('should include context (the line text)', () => {
+    const parsed = parseDocument(DATES_DOC);
+    const dates = extractDates(parsed);
+    const sept = dates.find(d => d.date === '2025-09-01');
+    assert.ok(sept);
+    assert.ok(sept.context.includes('started the protocol'));
+  });
+
+  it('should return empty for document with no dates in body', () => {
+    const parsed = parseDocument(MINIMAL_DOC);
+    const dates = extractDates(parsed);
+    assert.equal(dates.length, 0);
   });
 });
 
