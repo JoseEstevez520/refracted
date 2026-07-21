@@ -1,0 +1,48 @@
+{
+  "name": "refracted",
+  "version": "0.1.0",
+  "description": "MCP server for role-aware markdown views — one document, many readings",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "refracted": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "markdown",
+    "parser",
+    "role-based",
+    "deterministic",
+    "model-context-protocol"
+  ],
+  "author": "JoseEstevez520",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoseEstevez520/refracted.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
