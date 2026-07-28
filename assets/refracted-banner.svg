@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="480" viewBox="0 0 1440 480" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Refracted</title>
+  <desc id="desc">One document refracted into multiple role-aware views.</desc>
+  <defs>
+    <linearGradient id="bg" x1="80" y1="30" x2="1360" y2="450" gradientUnits="userSpaceOnUse"><stop stop-color="#09152F"/><stop offset=".48" stop-color="#101B42"/><stop offset="1" stop-color="#190F35"/></linearGradient>
+    <linearGradient id="paper" x1="250" y1="120" x2="490" y2="370" gradientUnits="userSpaceOnUse"><stop stop-color="#F9FCFF"/><stop offset="1" stop-color="#C9DBF8"/></linearGradient>
+    <linearGradient id="prism" x1="560" y1="100" x2="820" y2="390" gradientUnits="userSpaceOnUse"><stop stop-color="#DFF9FF" stop-opacity=".86"/><stop offset=".4" stop-color="#99B4FF" stop-opacity=".28"/><stop offset="1" stop-color="#D9A7FF" stop-opacity=".62"/></linearGradient>
+    <linearGradient id="cyan" x1="735" y1="230" x2="1170" y2="145" gradientUnits="userSpaceOnUse"><stop stop-color="#BDF8FF" stop-opacity=".85"/><stop offset="1" stop-color="#20D9FF" stop-opacity=".12"/></linearGradient>
+    <linearGradient id="violet" x1="735" y1="240" x2="1170" y2="240" gradientUnits="userSpaceOnUse"><stop stop-color="#E7C6FF" stop-opacity=".9"/><stop offset="1" stop-color="#8A62FF" stop-opacity=".12"/></linearGradient>
+    <linearGradient id="coral" x1="735" y1="250" x2="1170" y2="335" gradientUnits="userSpaceOnUse"><stop stop-color="#FFD0C7" stop-opacity=".9"/><stop offset="1" stop-color="#FF6B87" stop-opacity=".12"/></linearGradient>
+    <filter id="glow" x="-30%" y="-60%" width="160%" height="220%"><feGaussianBlur stdDeviation="12" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48" stroke="#9FC4FF" stroke-opacity=".07"/></pattern>
+  </defs>
+  <rect width="1440" height="480" rx="26" fill="url(#bg)"/><rect width="1440" height="480" rx="26" fill="url(#grid)"/><circle cx="720" cy="240" r="205" fill="#556CFF" fill-opacity=".08"/>
+  <path d="M475 239H620" stroke="#E9F7FF" stroke-width="18" stroke-linecap="round" filter="url(#glow)"/><path d="M735 230L1225 117" stroke="url(#cyan)" stroke-width="24" stroke-linecap="round" filter="url(#glow)"/><path d="M735 240H1225" stroke="url(#violet)" stroke-width="24" stroke-linecap="round" filter="url(#glow)"/><path d="M735 250L1225 363" stroke="url(#coral)" stroke-width="24" stroke-linecap="round" filter="url(#glow)"/>
+  <g transform="rotate(-7 355 240)"><rect x="230" y="108" width="245" height="265" rx="14" fill="url(#paper)"/><path d="M272 171H426M272 202H405M272 245H426M272 276H388M272 319H426" stroke="#50709C" stroke-width="12" stroke-linecap="round" stroke-opacity=".58"/><circle cx="272" cy="142" r="9" fill="#695CFF"/><path d="M290 142H362" stroke="#233B64" stroke-width="12" stroke-linecap="round"/></g>
+  <path d="M620 155L735 240L620 325L655 240Z" fill="url(#prism)" stroke="#DFF7FF" stroke-opacity=".85" stroke-width="3"/><path d="M620 155L655 240L735 240M620 325L655 240" stroke="#EFFDFF" stroke-opacity=".7" stroke-width="2"/>
+  <g fill="#C9F6FF"><rect x="1194" y="88" width="112" height="58" rx="10" fill-opacity=".16"/><rect x="1214" y="105" width="65" height="7" rx="3.5"/><rect x="1214" y="122" width="42" height="7" rx="3.5"/></g><g fill="#E5CFFF"><rect x="1194" y="211" width="112" height="58" rx="10" fill-opacity=".16"/><rect x="1214" y="228" width="65" height="7" rx="3.5"/><rect x="1214" y="245" width="42" height="7" rx="3.5"/></g><g fill="#FFD5CF"><rect x="1194" y="334" width="112" height="58" rx="10" fill-opacity=".16"/><rect x="1214" y="351" width="65" height="7" rx="3.5"/><rect x="1214" y="368" width="42" height="7" rx="3.5"/></g>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#F5F8FF"><text x="88" y="75" font-size="29" font-weight="700" letter-spacing="7">REFRACTED</text><text x="88" y="111" font-size="18" fill="#B9C9EA" letter-spacing=".6">ONE DOCUMENT · MANY READINGS</text></g>
+</svg>
