@@ -477,6 +477,161 @@ export function parseDocument(text: string): ParsedDocument {
   };
 }
 
+// ── Entity extraction ─────────────────────────────────────────────────
+
+/**
+ * Matches: [[entity name]] — wikilinks.
+ */
+const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
+
+export interface EntityOccurrence {
+  name: string;
+  section: string;
+}
+
+/**
+ * Extract all [[wikilink]] entities from document lines.
+ * Skips content inside fenced code blocks.
+ * If role is given, only extract from lines visible to that role.
+ */
+export function extractEntities(
+  parsed: ParsedDocument,
+  role?: string,
+): EntityOccurrence[] {
+  const { lines } = parsed;
+  const results: EntityOccurrence[] = [];
+  const seen = new Set<string>();
+
+  // Build a map of line → section title
+  const lineToSection = buildLineToSectionMap(lines, parsed);
+
+  // Determine which lines are visible (for role filtering)
+  let visibleLines: Set<number> | null = null;
+  if (role) {
+    const allowedTags = parsed.meta.roles[role];
+    if (!allowedTags) return [];
+    visibleLines = new Set<number>();
+    for (const block of parsed.roleBlocks) {
+      const hasAccess = block.roles.some(tag => allowedTags.includes(tag));
+      if (hasAccess) {
+        for (let i = block.lineStart; i <= block.lineEnd; i++) {
+          visibleLines.add(i);
+        }
+      }
+    }
+  }
+
+  let inCodeBlock = false;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trimStart();
+
+    // Track fenced code blocks
+    if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+
+    // Role filter
+    if (visibleLines !== null && !visibleLines.has(i)) continue;
+
+    // Find all wikilinks on this line
+    const line = lines[i];
+    let match: RegExpExecArray | null;
+    WIKILINK_RE.lastIndex = 0;
+    while ((match = WIKILINK_RE.exec(line)) !== null) {
+      const name = match[1].trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push({ name, section: lineToSection(i) });
+    }
+  }
+
+  return results;
+}
+
+function buildLineToSectionMap(
+  lines: string[],
+  parsed: ParsedDocument,
+): (line: number) => string {
+  // Build sorted list of heading starts and their titles
+  const headings: Array<{ lineStart: number; title: string }> = [];
+
+  function collectHeadings(nodes: import('./types.js').HeadingNode[]): void {
+    for (const n of nodes) {
+      headings.push({ lineStart: n.lineStart, title: n.title });
+      collectHeadings(n.children);
+    }
+  }
+  collectHeadings(parsed.tree);
+  headings.sort((a, b) => a.lineStart - b.lineStart);
+
+  return (line: number): string => {
+    let section = '(preamble)';
+    for (const h of headings) {
+      if (h.lineStart <= line) section = h.title;
+      else break;
+    }
+    return section;
+  };
+}
+
+// ── Date extraction ───────────────────────────────────────────────────
+
+export interface DateOccurrence {
+  date: string;
+  context: string;
+}
+
+const DATE_FULL_RE = /\b(\d{4}-\d{2}-\d{2})\b/g;
+const DATE_MONTH_RE = /\b(\d{4}-\d{2})\b/g;
+
+/**
+ * Scan document body lines for date patterns (YYYY-MM-DD and YYYY-MM).
+ * Returns each occurrence with surrounding context (the whole line trimmed).
+ * Skips code blocks and frontmatter.
+ */
+export function extractDates(parsed: ParsedDocument): DateOccurrence[] {
+  const results: DateOccurrence[] = [];
+  let inCodeBlock = false;
+
+  for (let i = parsed.lines.length > 0 ? 0 : 0; i < parsed.lines.length; i++) {
+    const line = parsed.lines[i];
+    const trimmed = line.trimStart();
+
+    // Skip fenced code blocks
+    if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+
+    // Collect full dates first (YYYY-MM-DD), then month-only (YYYY-MM)
+    const fullMatches = new Set<string>();
+    let m: RegExpExecArray | null;
+
+    DATE_FULL_RE.lastIndex = 0;
+    while ((m = DATE_FULL_RE.exec(line)) !== null) {
+      fullMatches.add(m[1]);
+      results.push({ date: m[1], context: line.trim() });
+    }
+
+    DATE_MONTH_RE.lastIndex = 0;
+    while ((m = DATE_MONTH_RE.exec(line)) !== null) {
+      // Skip if this YYYY-MM is already part of a full YYYY-MM-DD match
+      const candidate = m[1];
+      const isPartOfFull = [...fullMatches].some(fd => fd.startsWith(candidate));
+      if (!isPartOfFull) {
+        results.push({ date: candidate, context: line.trim() });
+      }
+    }
+  }
+
+  return results;
+}
+
 // ── Simple in-memory cache ────────────────────────────────────────────
 
 const cache = new Map<string, { mtime: number; parsed: ParsedDocument }>();

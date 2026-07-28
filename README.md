@@ -1,45 +1,236 @@
-<p align="center">
-  <img src="assets/refracted-banner.svg" alt="Refracted — one document, many readings" width="100%" />
-</p>
+# refracted
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/refracted"><img src="https://img.shields.io/npm/v/refracted?color=7c5cff&label=npm" alt="npm version" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-20b9c5" alt="MIT license" /></a>
-  <img src="https://img.shields.io/badge/node-%E2%89%A518-3c873a" alt="Node.js 18 or later" />
-  <img src="https://img.shields.io/badge/MCP-server-8d62ff" alt="MCP server" />
-</p>
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/refracted.svg)](https://www.npmjs.com/package/refracted)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 
-<p align="center"><strong>One document. Many readings.</strong></p>
+**One document. Many readings.**
 
-**refracted** is an MCP server that gives every reader the right view of the same Markdown file. It applies deterministic role filters at read time—no LLM, no duplicated documents, and no inference.
+An MCP server that extracts multiple deterministic views from a single markdown file.
+No LLM at read time — just a parser that knows where to look.
 
-> **Use it when one source document needs tailored views for different roles**: training, operations, audit, or any audience with distinct context needs.
+---
 
-## Why refracted?
+## The idea
 
-| One source of truth | Role-aware reading | Predictable output |
-| :--- | :--- | :--- |
-| Keep policies, runbooks, and protocols in a single file. | Reveal only the sections a requested role should see. | A parser and YAML—not an LLM—produce the result. |
+A single markdown file can serve a trainee, an auditor, and an operator — showing each
+exactly what they need — without maintaining separate copies or a database.
 
-Your Markdown stays completely readable in GitHub and other standard renderers. refracted recognizes three unobtrusive conventions:
+The document embeds role visibility through three invisible mechanisms that any standard
+markdown renderer ignores silently:
 
-1. **YAML frontmatter** for metadata, facts, and the role table.
-2. **HTML comments** for section-level visibility (`<!-- @role: X -->`).
-3. **Link reference definitions** for semantic document relationships.
-
-## At a glance
-
-```text
-one Markdown document
-        │
-        ├── training   → core procedures + training guidance
-        ├── auditor    → core procedures + audit history
-        └── operations → the context needed to run the work
+```
+┌─────────────────────────────────────────────────────────┐
+│  LAYER 1 — Frontmatter YAML                             │
+│  ─────────────────────────────────────────────────────  │
+│  type, version, created, modified                       │
+│  facts:  [ { id, value, unit, ... } ]                   │
+│  roles:  { training: [core, training], auditor: [...] } │
+└─────────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────┐
+│  LAYER 2 — Role Blocks (HTML comments)                  │
+│  ─────────────────────────────────────────────────────  │
+│  <!-- @role: core training -->                          │
+│  ## Temperature Checks                                  │
+│  ...content...                                          │
+│  <!-- @/role -->                                        │
+└─────────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────┐
+│  LAYER 3 — Relations (link reference definitions)       │
+│  ─────────────────────────────────────────────────────  │
+│  [rel:checklist_v1]: # "supersedes v1 after incident"   │
+│  [rel:summer_protocol]: # "simplifies in summer"        │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Quick start
+A deterministic parser extracts a different view depending on who's asking.
 
-Add refracted to your MCP client configuration:
+---
+
+## How it works
+
+```
+ markdown file on disk
+        │
+        ▼
+  ┌──────────────┐
+  │    parser    │  reads frontmatter → role table
+  │              │  scans role blocks → visible ranges
+  │              │  extracts relations → semantic graph
+  └──────┬───────┘
+         │
+    role: "training"
+         │
+         ▼
+  ┌──────────────┐
+  │  role filter │  keeps only blocks where tag ∈ role's allowed list
+  └──────┬───────┘
+         │
+         ▼
+  ┌──────────────┐
+  │  MCP tool    │  returns tree / section / facts / relations / meta
+  └──────────────┘
+```
+
+No generation. No inference. Every read is pure, fast, and reproducible.
+
+---
+
+## Format at a glance
+
+```markdown
+---
+type: protocol
+version: "2.1"
+created: 2025-09-01
+modified: 2026-03-15
+
+facts:
+  - id: temp-max       # structured data point
+    value: 5
+    unit: "C"
+  - id: incident-march
+    date: 2026-03
+    cost: 340
+    cause: compressor
+
+roles:
+  training: [core, training]   # trainee sees "core" and "training" blocks
+  auditor:  [core, audit]      # auditor sees "core" and "audit" blocks
+---
+
+<!-- @role: core -->
+# Opening Protocol
+
+Daily opening procedure.
+<!-- @/role -->
+
+<!-- @role: core training -->
+## Temperature Checks
+
+Check cold room temps every morning. Max: 5°C.
+<!-- @/role -->
+
+<!-- @role: audit -->
+## Incident History
+
+2026-03: Cold room 2 failed overnight. Cost: 340 EUR.
+<!-- @/role -->
+
+[rel:checklist_v1]: # "added compressor check that v1 didn't have"
+[rel:summer_protocol]: # "simplifies in summer"
+```
+
+---
+
+## What each role sees
+
+| Section             | training | auditor | operations |
+|---------------------|:--------:|:-------:|:----------:|
+| Opening Protocol    | yes      | yes     | yes        |
+| Temperature Checks  | yes      | —       | yes        |
+| Incident History    | —        | yes     | yes        |
+| Facts & Relations   | yes      | yes     | yes        |
+
+Same file. Different views. Zero duplication.
+
+---
+
+## Tools
+
+### `refracted_tree`
+
+Returns the heading structure of a file, filtered by role, with token estimates.
+
+```
+Input:  { file: "/path/doc.md", role: "training" }
+
+Output:
+  File: /path/doc.md
+  Role: training (sees: core, training)
+  Full file: ~450 tokens
+  This tree: ~25 tokens
+  Savings: ~94%
+
+  # Opening Protocol  (~120 tok)
+    ## Temperature Checks  (~85 tok)
+```
+
+### `refracted_section`
+
+Reads a specific section. Fuzzy heading match. Role filter determines access.
+
+```
+Input:  { file: "/path/doc.md", heading: "temperature", role: "training" }
+Output: full section content
+
+Input:  { file: "/path/doc.md", heading: "incident history", role: "training" }
+Output: No section matching "incident history" found for role "training".
+```
+
+### `refracted_facts`
+
+Extracts structured key-value facts from frontmatter.
+
+```
+Input:  { file: "/path/doc.md" }
+
+Output:
+  Found 2 fact(s):
+
+  - temp-max
+    id: temp-max
+    value: 5
+    unit: C
+
+  - incident-march
+    id: incident-march
+    date: 2026-03
+    cost: 340
+    cause: compressor
+```
+
+### `refracted_relations`
+
+Extracts semantic links to other documents.
+
+```
+Input:  { file: "/path/doc.md" }
+
+Output:
+  Found 2 relation(s):
+
+  - checklist_v1: "added compressor check that v1 didn't have"
+  - summer_protocol: "simplifies in summer"
+```
+
+### `refracted_meta`
+
+Returns document metadata and the role visibility table.
+
+```
+Input:  { file: "/path/doc.md" }
+
+Output:
+  ## Document Metadata
+  Type: protocol
+  Version: 2.1
+  Created: 2025-09-01
+
+  ## Role Table
+  - training: [core, training]
+  - auditor:  [core, audit]
+```
+
+---
+
+## Installation
+
+### From npm (MCP client config)
 
 ```json
 {
@@ -52,69 +243,7 @@ Add refracted to your MCP client configuration:
 }
 ```
 
-Then ask your MCP client to inspect a refracted Markdown document. A useful workflow is:
-
-1. Call `refracted_meta` to discover the document and its roles.
-2. Call `refracted_tree` with a role to see the accessible structure.
-3. Call `refracted_section` only for the section you need.
-
-## Document format
-
-Here is a complete, small example:
-
-```markdown
----
-type: protocol
-version: "2.1"
-
-facts:
-  - id: temp-max
-    value: 5
-    unit: "C"
-
-roles:
-  training: [core, training]
-  auditor: [core, audit]
----
-
-<!-- @role: core -->
-# Opening Protocol
-
-Daily opening procedure.
-<!-- @/role -->
-
-<!-- @role: core training -->
-## Temperature Checks
-
-Check cold room temps every morning.
-<!-- @/role -->
-
-<!-- @role: audit -->
-## Incident History
-
-Cold room 2 failed. Cost: 340 EUR.
-<!-- @/role -->
-
-[rel:checklist_v1]: # "added compressor check that v1 didn't have"
-```
-
-`training` sees **Opening Protocol** and **Temperature Checks**. `auditor` sees **Opening Protocol** and **Incident History**. One file; different, intentional views.
-
-For the full convention reference, see [the format specification](docs/format.md).
-
-## MCP tools
-
-| Tool | What it does | Role-aware |
-| :--- | :--- | :---: |
-| `refracted_tree` | Returns the heading tree with token estimates. | Yes |
-| `refracted_section` | Returns a fuzzy-matched section. | Yes |
-| `refracted_facts` | Extracts structured YAML facts. | — |
-| `refracted_relations` | Extracts semantic link-reference relations. | — |
-| `refracted_meta` | Returns metadata and the role visibility table. | — |
-
-See [the tool reference](docs/tools.md) for request parameters and example responses.
-
-## Install from source
+### From source
 
 ```bash
 git clone https://github.com/JoseEstevez520/refracted.git
@@ -123,7 +252,7 @@ npm install
 npm run build
 ```
 
-Then point your MCP client at the built server:
+Then point your MCP client to `dist/index.js`:
 
 ```json
 {
@@ -136,30 +265,60 @@ Then point your MCP client at the built server:
 }
 ```
 
-## What refracted is not
+---
 
-- **Not an LLM.** Zero inference at read time. Pure regex and YAML parsing.
-- **Not an access-control system.** Roles are advisory labels, not security boundaries. If someone has the file, they have the file.
-- **Not a template engine.** It reads documents differently; it does not generate them.
-- **Not a database.** Facts are simple key-value pairs in YAML, not a query engine.
-- **Not a replacement for ordinary file reading.** Use it when Markdown has embedded structure.
+## Recommended workflow
+
+```
+1. refracted_meta    → understand the document: what type, what roles exist
+2. refracted_tree    → see the structure (with role= to filter)
+3. refracted_section → read only what you need
+4. refracted_facts   → extract structured data points
+5. refracted_relations → traverse the document graph
+```
+
+---
+
+## Philosophy
+
+Memory is not a place to store things — it's a way of reading what already exists.
+
+A single document encodes different perspectives simultaneously. The reader brings a
+role; the parser brings a lens. Neither the file nor the tool holds the complete picture
+alone. They converge on read.
+
+This is why refracted does no generation and holds no state between reads. The document
+is the source. The role is the argument. The view is the output.
+
+---
+
+## What it is NOT
+
+- **Not an LLM.** Zero inference at read time. Pure regex + YAML.
+- **Not an access control system.** Roles are advisory labels, not security. Anyone with the file has the file.
+- **Not a template engine.** It reads documents differently; it doesn't generate them.
+- **Not a database.** Facts are structured YAML, not a query engine.
+
+---
 
 ## Development
 
 ```bash
 npm install
-npm run build      # compile TypeScript
-npm test           # run tests
-npm run dev        # watch mode
+npm run build   # compile TypeScript → dist/
+npm test        # run parser tests
+npm run dev     # watch mode
 ```
 
-## Examples
+## Documentation
 
-Ready-to-use documents live in [`examples/`](examples/):
+- [`docs/format.md`](docs/format.md) — full format specification
+- [`docs/tools.md`](docs/tools.md) — tool reference
+- [`examples/`](examples/) — annotated example documents
 
-- [`protocolo_apertura.md`](examples/protocolo_apertura.md) — a role-aware opening protocol.
-- [`checklist_v1.md`](examples/checklist_v1.md) — a related checklist with structured facts.
-- [`protocolo_verano.md`](examples/protocolo_verano.md) — a seasonal variant linked to the base protocol.
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 

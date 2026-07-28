@@ -5,11 +5,16 @@
  * One document. Many readings. No LLM at read time.
  *
  * Tools:
- *   refracted_tree(file, role?)       — heading tree, filtered by role
- *   refracted_section(file, heading, role?) — section content, filtered by role
- *   refracted_facts(file)             — structured facts from frontmatter
- *   refracted_relations(file)         — semantic relations from link refs
- *   refracted_meta(file)              — document metadata and role table
+ *   refracted_tree(file, role?)              — heading tree, filtered by role
+ *   refracted_section(file, heading, role?)  — section content, filtered by role
+ *   refracted_facts(file)                    — structured facts from frontmatter
+ *   refracted_relations(file)                — semantic relations from link refs
+ *   refracted_meta(file)                     — document metadata and role table
+ *   refracted_graph(file, depth?)            — traverse relations across files
+ *   refracted_entities(file, role?)          — extract [[wikilink]] entities
+ *   refracted_timeline(file)                 — chronological date/fact timeline
+ *   refracted_diff(file)                     — detect structural changes
+ *   refracted_crossdoc(directory, target)    — find files referencing a target
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -22,6 +27,11 @@ import { handleSection } from './tools/section.js';
 import { handleFacts } from './tools/facts.js';
 import { handleRelations } from './tools/relations.js';
 import { handleMeta } from './tools/meta.js';
+import { handleGraph } from './tools/graph.js';
+import { handleEntities } from './tools/entities.js';
+import { handleTimeline } from './tools/timeline.js';
+import { handleDiff } from './tools/diff.js';
+import { handleCrossdoc } from './tools/crossdoc.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -106,13 +116,23 @@ const server = new McpServer(
 - **refracted_facts**: Extract structured data points (facts/hechos) from frontmatter.
 - **refracted_relations**: Extract semantic links between documents.
 - **refracted_meta**: Read document metadata and the role visibility table.
+- **refracted_graph**: Traverse relations across multiple files N levels deep, building a connected graph.
+- **refracted_entities**: Extract all [[wikilink]] entities from a file (optionally filtered by role).
+- **refracted_timeline**: Present facts and body-text dates in chronological order.
+- **refracted_diff**: Detect structural changes in a file since last read (stored in .refracted/hashes.json).
+- **refracted_crossdoc**: Find all documents in a directory that reference a specific file.
 
 ## Workflow
 
 1. refracted_meta → understand what roles exist and what the document is
 2. refracted_tree → see the structure (with or without role filter)
 3. refracted_section → read only the section you need
-4. refracted_facts / refracted_relations → extract structured data`,
+4. refracted_facts / refracted_relations → extract structured data
+5. refracted_graph → explore the document network
+6. refracted_entities → find referenced entities and concepts
+7. refracted_timeline → build a chronological view
+8. refracted_diff → track changes over time
+9. refracted_crossdoc → find back-references from a directory`,
   },
 );
 
@@ -212,6 +232,105 @@ server.tool(
       const { text, mtime } = await loadFile(file);
       const parsed = await parseDocumentCached(file, text, mtime);
       return textResult(handleMeta(parsed));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return textResult(`Error: ${msg}`, true);
+    }
+  },
+);
+
+// ── Tool: refracted_graph ─────────────────────────────────────────────
+
+server.tool(
+  'refracted_graph',
+  'Traverses [rel:X] relations across multiple files up to N levels deep, building a graph of connected documents.',
+  {
+    file: z.string().describe('Absolute path to the starting .md file'),
+    depth: z.number().int().min(1).max(3).optional().describe('Traversal depth (default 1, max 3)'),
+  },
+  async ({ file, depth = 1 }) => {
+    try {
+      return textResult(await handleGraph(file, depth));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return textResult(`Error: ${msg}`, true);
+    }
+  },
+);
+
+// ── Tool: refracted_entities ──────────────────────────────────────────
+
+server.tool(
+  'refracted_entities',
+  'Extracts all [[wikilink]] entities from a markdown file with the section they appear in. Optionally filtered by role.',
+  {
+    file: z.string().describe('Absolute path to the .md file'),
+    role: z.string().optional().describe('Role name — if given, only extract from sections visible to that role'),
+  },
+  async ({ file, role }) => {
+    try {
+      const { text, mtime } = await loadFile(file);
+      const parsed = await parseDocumentCached(file, text, mtime);
+      return textResult(handleEntities(parsed, file, role));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return textResult(`Error: ${msg}`, true);
+    }
+  },
+);
+
+// ── Tool: refracted_timeline ──────────────────────────────────────────
+
+server.tool(
+  'refracted_timeline',
+  'Extracts facts and body-text date patterns and presents them chronologically.',
+  {
+    file: z.string().describe('Absolute path to the .md file'),
+  },
+  async ({ file }) => {
+    try {
+      const { text, mtime } = await loadFile(file);
+      const parsed = await parseDocumentCached(file, text, mtime);
+      return textResult(handleTimeline(parsed, file));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return textResult(`Error: ${msg}`, true);
+    }
+  },
+);
+
+// ── Tool: refracted_diff ──────────────────────────────────────────────
+
+server.tool(
+  'refracted_diff',
+  'Compares the current state of a file against a stored snapshot to detect structural changes (facts, relations, sections). Stores snapshots in .refracted/hashes.json next to the file.',
+  {
+    file: z.string().describe('Absolute path to the .md file'),
+  },
+  async ({ file }) => {
+    try {
+      const { text, mtime } = await loadFile(file);
+      const parsed = await parseDocumentCached(file, text, mtime);
+      return textResult(await handleDiff(parsed, file));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return textResult(`Error: ${msg}`, true);
+    }
+  },
+);
+
+// ── Tool: refracted_crossdoc ──────────────────────────────────────────
+
+server.tool(
+  'refracted_crossdoc',
+  'Scans all .md files in a directory and returns those that reference the specified target file through [rel:X] relations.',
+  {
+    directory: z.string().describe('Absolute path to the directory to scan'),
+    target: z.string().describe('Filename (with or without .md) to search for, e.g. "checklist_v1"'),
+  },
+  async ({ directory, target }) => {
+    try {
+      return textResult(await handleCrossdoc(directory, target));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       return textResult(`Error: ${msg}`, true);
