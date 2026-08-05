@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/refracted-banner.svg" alt="Refracted — one document, many readings" width="100%" />
+  <img src="assets/readme-hero.png" alt="One document, many readings" width="100%" />
 </p>
 
 <p align="center">
